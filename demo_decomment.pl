@@ -33,8 +33,11 @@ ptext	: /[^"\/]+/		{ print $item[1]; }
 
 string	: '"' s_char(s) '"'	{ print '"', @{$item[2]}, '"'; }
 
-s_char	: /[^"\\]+/
+s_char  : 			{ $thisrule->{tokensep} = ''; } <reject>
+	| /[^"\\]+/
 	| /(?:\\.)+/
+
+
 
 comment	: m{//.*$}m
 	| m{/\*		# COMMENT OPENER, THEN...

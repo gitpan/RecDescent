@@ -162,7 +162,7 @@ eval 'undef &' . $namespace . '::' . $self->{"name"};
 
 	my $code =
 '
-# ARGS ARE: ($parser, $text; $_linenum, $repeating, $_noactions)
+# ARGS ARE: ($parser, $text; $_linenum, $repeating, $_noactions, \@args, $toksep)
 sub ' . $namespace . '::' . $self->{"name"} .  '
 {
 	my $_toksep = undef;
@@ -180,6 +180,8 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	my @item = ();
 	my $repeating =  defined($_[3]) && $_[3];
 	my $_noactions = defined($_[4]) && $_[4];
+ 	my @arg =        defined $_[5] ? @{ &{$_[5]} } : ();
+	my %arg =        ($#arg & 01) ? @arg : (@arg, undef);
 	my $text;
 	my $lastsep="";
 	my $expectation = new Parse::RecDescent::Expectation($thisrule->expected());
@@ -474,12 +476,15 @@ sub describe ($)
 sub new ($$$$$$)
 {
 	my $class = ref($_[0]) || $_[0];
+	my $pattern = $_[1];
 	my $ldel = $_[2];
 	my $rdel = $ldel;
 	$rdel =~ tr/{[(</}])>/;
 	my $mod = $_[3];
 
-	if (!eval "'' =~ m$ldel$_[1]$rdel" and $@)
+	if (!eval "no strict;
+		   local \$SIG{__WARN__} = sub {0};
+		   '' =~ m$ldel$pattern$rdel" and $@)
 	{
 		Parse::RecDescent::_error("Token pattern \"m$ldel$_[1]$rdel\"
 					   is not a valid regular expression",
@@ -490,7 +495,7 @@ sub new ($$$$$$)
 
 	bless 
 	{
-		"pattern"   => $_[1],
+		"pattern"   => $pattern,
 		"ldelim"    => $ldel,
 		"rdelim"    => $rdel,
 		"mod"       => $mod,
@@ -692,9 +697,21 @@ package Parse::RecDescent::Subrule;
 
 sub issubrule ($) { return $_[0]->{"subrule"} }
 
-sub describe ($) { $_[0]->{"implicit"} or $_[0]->{"subrule"} }
+sub describe ($)
+{
+	my $desc = $_[0]->{"implicit"} || $_[0]->{"subrule"};
+	$desc = "<matchrule:$desc>" if $_[0]->{"matchrule"};
+	return $desc;
+}
 
-sub new ($$$$;$)
+sub callsyntax($)
+{
+	my $call = $_[0]->{"subrule"};
+	$call = '${\qq{'.$call.'}}' if $_[0]->{"matchrule"};
+	return $call;
+}
+
+sub new ($$$$;$$$)
 {
 	my $class = ref($_[0]) || $_[0];
 	bless 
@@ -703,6 +720,8 @@ sub new ($$$$;$)
 		"lookahead" => $_[2],
 		"line"      => $_[3],
 		"implicit"  => $_[4] || undef,
+		"matchrule" => $_[5],
+		"argcode"   => $_[6] || undef,
 	}, $class;
 }
 
@@ -711,15 +730,17 @@ sub code($$$)
 	my ($self, $namespace, $rule) = @_;
 	
 '
-		$expectation->is(q{' . ($rule->hasleftmost($self) ? ''
-				: $self->describe ) . '})->at($text);
+		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
+				: 'qq{'.$self->callsyntax.'}' ) . ')->at($text);
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) .'
 
 		' . ($self->{"lookahead"}<0?'if':'unless')
 		. ' (defined ($_tok = $thisparser->'
-		. $self->{"subrule"}
+		. $self->callsyntax
 		. '($text,$_linenum,$repeating,'
 		. ($self->{"lookahead"}?'1':'$_noactions')
+		. ($self->{argcode} ? ",sub { return $self->{argcode} }"
+				   : ',undef')
 		. ')))
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
@@ -736,11 +757,25 @@ sub code($$$)
 package Parse::RecDescent::Repetition;
 
 sub issubrule ($) { return $_[0]->{"subrule"} }
-sub describe ($) { $_[0]->{"expected"} || $_[0]->{"subrule"} }
 
-sub new ($$$$$$$$)
+sub describe ($)
 {
-	my ($self, $subrule, $repspec, $min, $max, $lookahead, $line, $parser) = @_;
+	my $desc = $_[0]->{"expected"} || $_[0]->{"subrule"};
+	$desc = "<matchrule:$desc>" if $_[0]->{"matchrule"};
+	return $desc;
+}
+
+sub callsyntax($$)
+{
+	if ($_[0]->{matchrule})
+		{ return "sub { goto &{''.qq{$_[1]$_[0]->{subrule}}} }"; }
+	else
+		{ return "\\&$_[1]$_[0]->{subrule}"; }
+}
+
+sub new ($$$$$$$$$$)
+{
+	my ($self, $subrule, $repspec, $min, $max, $lookahead, $line, $parser, $matchrule, $argcode) = @_;
 	my $class = ref($self) || $self;
 	($max, $min) = ( $min, $max) if ($max<$min);
 
@@ -752,12 +787,12 @@ sub new ($$$$$$$$)
 	{
 		if ($min>0)
 		{
-		   return new Parse::RecDescent::Subrule($subrule,$lookahead,$line,$desc);
+		   return new Parse::RecDescent::Subrule($subrule,$lookahead,$line,$desc,$matchrule,$argcode);
 		}
 		else
 		{
 			Parse::RecDescent::_error("Not symbol (\"!\") before
-				            \"$subrule($repspec)\" doesn't make
+				            \"$subrule\" doesn't make
 					    sense.",$line);
 			Parse::RecDescent::_hint("Lookahead for negated optional
 					   repetitions (such as
@@ -777,6 +812,8 @@ sub new ($$$$$$$$)
 		"lookahead" => $lookahead,
 		"line"      => $line,
 		"expected"  => $desc,
+		"argcode"   => $argcode || undef,
+		"matchrule" => $matchrule,
 	}, $class;
 }
 
@@ -788,15 +825,18 @@ sub code($$$)
 		@{$self}{ qw{subrule repspec min max lookahead} };
 
 '
-		$expectation->is(q{' . ($rule->hasleftmost($self) ? ''
-				: $self->describe ) . '})->at($text);
+		$expectation->is(' . ($rule->hasleftmost($self) ? 'q{}'
+				: 'qq{'.$self->callsyntax('').'}' ) . ')->at($text);
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) .'
 
-		unless (defined ($_tok = $thisparser->_parserepeat($text, \&'
-		. $namespace . '::' . $subrule
+		unless (defined ($_tok = $thisparser->_parserepeat($text, '
+		. $self->callsyntax($namespace.'::')
 		. ', ' . $min . ', ' . $max . ', '
 		. ($self->{"lookahead"}?'1':'$_noactions')
-		. ',$_linenum,$expectation))) 
+		. ',$_linenum,$expectation,'
+		. ($self->{argcode} ? "sub { return $self->{argcode} }"
+				   : 'undef')
+		. '))) 
 		{
 			last;
 		}
@@ -921,14 +961,15 @@ my $MTOKEN		= q{\A\s*m[^\w\s]};
 my $LITERAL		= q{\A\s*'((\\\\'|[^'])+)'};
 my $INTERPLIT		= q{\A\s*"((\\\\"|[^"])+)"};
 my $SUBRULE		= '\A\s*(\w+)';
-my $OPTIONAL		= $SUBRULE.'\((\?)\)';
-my $ANY			= $SUBRULE.'\((s\?)\)';
-my $MANY 		= $SUBRULE.'\((s|\.\.)\)';
-my $EXACTLY		= $SUBRULE.'\(([1-9]\d*)\)';
-my $BETWEEN		= $SUBRULE.'\((\d+)\.\.([1-9]\d*)\)';
-my $ATLEAST		= $SUBRULE.'\((\d+)\.\.\)';
-my $ATMOST		= $SUBRULE.'\(\.\.([1-9]\d*)\)';
-my $BADREP		= "($SUBRULE".'\((-?\d+)?\.\.(-?\d+)?\))';
+my $MATCHRULE		= '\A(\s*<matchrule:)';
+my $OPTIONAL		= '\A\((\?)\)';
+my $ANY			= '\A\((s\?)\)';
+my $MANY 		= '\A\((s|\.\.)\)';
+my $EXACTLY		= '\A\(([1-9]\d*)\)';
+my $BETWEEN		= '\A\((\d+)\.\.([1-9]\d*)\)';
+my $ATLEAST		= '\A\((\d+)\.\.\)';
+my $ATMOST		= '\A\(\.\.([1-9]\d*)\)';
+my $BADREP		= '\A\((-?\d+)?\.\.(-?\d+)?\)';
 my $ACTION		= '\A\s*\{';
 my $IMPLICITSUBRULE	= '\A\s*\(';
 my $COMMENT		= '\A\s*(#.*)';
@@ -1058,7 +1099,7 @@ sub _generate($$$;$)
 		{
 			_parse("a resync to newline marker", $aftererror,$line);
 			$item = new Parse::RecDescent::Directive(
-				      'if ($text =~ s/[^\n]*\n//) { $return = 0; $& } else { undef }',
+				      'if ($text =~ s/\A[^\n]*\n//) { $return = 0; $& } else { undef }',
 				      $lookahead,$line);
 			$prod and $prod->additem($item)
 			      or  _no_rule("<resync>",$line);
@@ -1071,13 +1112,10 @@ sub _generate($$$;$)
 			_parse("a resync with pattern marker", $aftererror,$line);
 			$code =~ /\A\s*<resync:(.*)>\Z/s;
 			$item = new Parse::RecDescent::Directive(
-				      "($1) ? undef : ".'$&', $lookahead,$line);
-				      'if ($text =~ s/'.$1.'//) { $return = 0; $& } else { undef }',
-			$item = new Parse::RecDescent::Directive(
-				      '$text =~ s/'.$code.'// or undef',
+				      'if ($text =~ s/\A'.$1.'//) { $return = 0; $& } else { undef }',
 				      $lookahead,$line);
 			$prod and $prod->additem($item)
-			      or  _no_rule("<reject:$code>",$line);
+			      or  _no_rule("<resync:$code>",$line);
 		}
 		elsif ($grammar =~ s/$COMMITMK//)
 		{
@@ -1172,112 +1210,151 @@ sub _generate($$$;$)
 			$prod and $prod->additem($item)
 			      or  _no_rule("regex token",$line,$code);
 		}
-		elsif ($grammar =~ s/$OPTIONAL//)
+		elsif ($grammar =~ m/$MATCHRULE/
+				and $code = extract_bracketed($grammar,'<')
+		       or $grammar =~ s/$SUBRULE//
+				and $code = $1)
 		{
-			_parse("an zero-or-one subrule match", $aftererror,$line);
-			$item = new Parse::RecDescent::Repetition($1,$2,0,1,
-							   $lookahead,$line,
-							   $self);
-			$prod and $prod->additem($item)
-			      or  _no_rule("repetition",$line,"$1($2)");
+			my $name = $code;
+			my $matchrule = 0;
+			if (substr($name,0,1) eq '<')
+			{
+				$name =~ s/$MATCHRULE//;
+				$name =~ s/>\Z//;
+				$matchrule = 1;
+			}
 
-			$rule and $rule->addcall($1);
-		}
-		elsif ($grammar =~ s/$ANY//)
-		{
-			_parse("a zero-or-more subrule match", $aftererror,$line);
-			$item = new Parse::RecDescent::Repetition($1,$2,0,$MAXREP,
-							   $lookahead,$line,
-							   $self);
-			$prod and $prod->additem($item)
-			      or  _no_rule("repetition",$line,"$1($2)");
+		# EXTRACT TRAILING ARG LIST (IF ANY)
 
-			$rule and $rule->addcall($1);
+			my $argcode = extract_codeblock($grammar, "[]",'') || '';
 
-			_check_insatiable($1,$2,$grammar,$line);
-		}
-		elsif ($grammar =~ s/$MANY//)
-		{
-			_parse("a one-or-more subrule match", $aftererror,$line);
-			$item = new Parse::RecDescent::Repetition($1,$2,1,$MAXREP,
-							   $lookahead,$line,
-							   $self);
-							   
-			$prod and $prod->additem($item)
-			      or  _no_rule("repetition",$line,"$1($2)");
+		# EXTRACT TRAILING REPETITION SPECIFIER (IF ANY)
 
-			$rule and $rule->addcall($1);
+			if ($grammar =~ s/$OPTIONAL//)
+			{
+				_parse("an zero-or-one subrule match", $aftererror,$line,"$code$argcode($1)");
+				$item = new Parse::RecDescent::Repetition($name,$1,0,1,
+								   $lookahead,$line,
+								   $self,
+								   $matchrule,
+								   $argcode);
+				$prod and $prod->additem($item)
+				      or  _no_rule("repetition",$line,"$code$argcode($1)");
 
-			_check_insatiable($1,$2,$grammar,$line);
-		}
-		elsif ($grammar =~ s/$EXACTLY//)
-		{
-			_parse("an exactly-$2-times subrule match", $aftererror,$line);
-			$item = new Parse::RecDescent::Repetition($1,$2,$2,$2,
-							   $lookahead,$line,
-							   $self);
-			$prod and $prod->additem($item)
-			      or  _no_rule("repetition",$line,"$1($2)");
+				!$matchrule and $rule and $rule->addcall($name);
+			}
+			elsif ($grammar =~ s/$ANY//)
+			{
+				_parse("a zero-or-more subrule match", $aftererror,$line,"$code$argcode($1)");
+				$item = new Parse::RecDescent::Repetition($name,$1,0,$MAXREP,
+								   $lookahead,$line,
+								   $self,
+								   $matchrule,
+								   $argcode);
+				$prod and $prod->additem($item)
+				      or  _no_rule("repetition",$line,"$code$argcode($1)");
 
-			$rule and $rule->addcall($1);
-		}
-		elsif ($grammar =~ s/$BETWEEN//)
-		{
-			_parse("a $2-to-$3 subrule match", $aftererror,$line);
-			$item = new Parse::RecDescent::Repetition($1,"$2..$3",$2,$3,
-							   $lookahead,$line,
-							   $self);
-			$prod and $prod->additem($item)
-			      or  _no_rule("repetition",$line,"$1($2..$3)");
+				!$matchrule and $rule and $rule->addcall($name);
 
-			$rule and $rule->addcall($1);
-		}
-		elsif ($grammar =~ s/$ATLEAST//)
-		{
-			_parse("a $2-or-more subrule match", $aftererror,$line);
-			$item = new Parse::RecDescent::Repetition($1,"$2..",$2,$MAXREP,
-							   $lookahead,$line,
-							   $self);
-			$prod and $prod->additem($item)
-			      or  _no_rule("repetition",$line,"$1($2..)");
+				_check_insatiable($name,$1,$grammar,$line);
+			}
+			elsif ($grammar =~ s/$MANY//)
+			{
+				_parse("a one-or-more subrule match", $aftererror,$line,"$code$argcode($1)");
+				$item = new Parse::RecDescent::Repetition($name,$1,1,$MAXREP,
+								   $lookahead,$line,
+								   $self,
+								   $matchrule,
+								   $argcode);
+								   
+				$prod and $prod->additem($item)
+				      or  _no_rule("repetition",$line,"$code$argcode($1)");
 
-			$rule and $rule->addcall($1);
+				!$matchrule and $rule and $rule->addcall($name);
 
-			_check_insatiable($1,"$2..",$grammar,$line);
-		}
-		elsif ($grammar =~ s/$ATMOST// 			)
-		{
-			_parse("a one-to-$2 subrule match", $aftererror,$line);
-			$item = new Parse::RecDescent::Repetition($1,"..$2",1,$2,
-							   $lookahead,$line,
-							   $self);
-			$prod and $prod->additem($item)
-			      or  _no_rule("repetition",$line,"$1(..$2)");
+				_check_insatiable($name,$1,$grammar,$line);
+			}
+			elsif ($grammar =~ s/$EXACTLY//)
+			{
+				_parse("an exactly-$1-times subrule match", $aftererror,$line,"$code$argcode($1)");
+				$item = new Parse::RecDescent::Repetition($name,$1,$1,$1,
+								   $lookahead,$line,
+								   $self,
+								   $matchrule,
+								   $argcode);
+				$prod and $prod->additem($item)
+				      or  _no_rule("repetition",$line,"$code$argcode($1)");
 
-			$rule and $rule->addcall($1);
-		}
-		elsif ($grammar =~ s/$BADREP// 			)
-		{
-			_parse("an subrule match with invalid repetition specifier", 0,$line);
-			_error("Incorrect specification of a repeated subrule",
-			       $line);
-			_hint("Repeated subrules like \"$1\" cannot have
-			       a maximum repetition of zero, nor can they have
-			       negative components in their ranges.");
-		}
-		elsif ($grammar =~ s/$SUBRULE// )
-		{
-			_parse("a subrule match", $aftererror,$line);
-			# EXPERIMENTAL
-			my $name = $1;
-			my $desc;
-			if ($name=~/\A_alternation_\d+_of_production_\d+_of_rule/)
-				{ $desc = $self->{"rules"}{$name}->expected }
-			$item = new Parse::RecDescent::Subrule($name,$lookahead,$line,$desc);
-			$prod and $prod->additem($item)
-			      or  _no_rule("(sub)rule",$line,$name);
+				!$matchrule and $rule and $rule->addcall($name);
+			}
+			elsif ($grammar =~ s/$BETWEEN//)
+			{
+				_parse("a $1-to-$2 subrule match", $aftererror,$line,"$code$argcode($1..$2)");
+				$item = new Parse::RecDescent::Repetition($name,"$1..$2",$1,$2,
+								   $lookahead,$line,
+								   $self,
+								   $matchrule,
+								   $argcode);
+				$prod and $prod->additem($item)
+				      or  _no_rule("repetition",$line,"$code$argcode($1..$2)");
 
-			$rule and $rule->addcall($name);
+				!$matchrule and $rule and $rule->addcall($name);
+			}
+			elsif ($grammar =~ s/$ATLEAST//)
+			{
+				_parse("a $1-or-more subrule match", $aftererror,$line,"$code$argcode($1..)");
+				$item = new Parse::RecDescent::Repetition($name,"$1..",$1,$MAXREP,
+								   $lookahead,$line,
+								   $self,
+								   $matchrule,
+								   $argcode);
+				$prod and $prod->additem($item)
+				      or  _no_rule("repetition",$line,"$code$argcode($1..)");
+
+				!$matchrule and $rule and $rule->addcall($name);
+
+				_check_insatiable($name,"$1..",$grammar,$line);
+			}
+			elsif ($grammar =~ s/$ATMOST// 			)
+			{
+				_parse("a one-to-$1 subrule match", $aftererror,$line,"$code$argcode(..$1)");
+				$item = new Parse::RecDescent::Repetition($name,"..$1",1,$1,
+								   $lookahead,$line,
+								   $self,
+								   $matchrule,
+								   $argcode);
+				$prod and $prod->additem($item)
+				      or  _no_rule("repetition",$line,"$code$argcode(..$1)");
+
+				!$matchrule and $rule and $rule->addcall($name);
+			}
+			elsif ($grammar =~ s/$BADREP// 			)
+			{
+				_parse("an subrule match with invalid repetition specifier", 0,$line);
+				_error("Incorrect specification of a repeated subrule",
+				       $line);
+				_hint("Repeated subrules like \"$1\" cannot have
+				       a maximum repetition of zero, nor can they have
+				       negative components in their ranges.");
+			}
+			else
+			{
+				_parse("a subrule match", $aftererror,$line,$code);
+				my $desc;
+				if ($name=~/\A_alternation_\d+_of_production_\d+_of_rule/)
+					{ $desc = $self->{"rules"}{$name}->expected }
+				$item = new Parse::RecDescent::Subrule($name,
+								       $lookahead,
+								       $line,
+								       $desc,
+								       $matchrule,
+								       $argcode);
+	 
+				$prod and $prod->additem($item)
+				      or  _no_rule("(sub)rule",$line,$name);
+
+				!$matchrule and $rule and $rule->addcall($name);
+			}
 		}
 		elsif ($grammar =~ s/$OTHER//   )
 		{
@@ -1461,9 +1538,9 @@ sub AUTOLOAD
 	goto &$AUTOLOAD;
 }
 
-sub _parserepeat($$$$$$$$$)	# RETURNS A REF TO AN ARRAY OF MATCHES
+sub _parserepeat($$$$$$$$$$)	# RETURNS A REF TO AN ARRAY OF MATCHES
 {
-	my ($parser, $text, $prod, $min, $max, $_noactions, $_linenum) = @_;
+	my ($parser, $text, $prod, $min, $max, $_noactions, $_linenum, $expectation, $argcode) = @_;
 	my @tokens = ();
 	
 	my $reps;
@@ -1473,7 +1550,7 @@ sub _parserepeat($$$$$$$$$)	# RETURNS A REF TO AN ARRAY OF MATCHES
 		my $_savetext = $text;
 		my $prevtextlen = length $text;
 		my $_tok;
-		if (! defined ($_tok = &$prod($parser,$text,$_linenum,1,$_noactions)))
+		if (! defined ($_tok = &$prod($parser,$text,$_linenum,1,$_noactions,$argcode)))
 		{
 			$text = $_savetext;
 			last;
@@ -1633,3 +1710,4 @@ use vars qw ( $RD_ERRORS $RD_WARN $RD_HINT $RD_TRACE );
 $RD_ERRORS = 1;
 
 1;
+

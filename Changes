@@ -98,5 +98,31 @@ Revision history for Perl extension Parse::RecDescent.
 	- fixed bug in Text::Balanced. Division now correctly handled
 	  in code blocks.
 
-1.25
+
+1.25  Mon Feb 09 12:19:14 EST 1998
+
 	- Resynchronized numbering schemes for RecDescent and Balanced.
+
+
+1.26 Wed Feb 25 13:52:15 EST 1998
+
+	- Fixed bug (and inefficiency) in <resync:pattern> directive.
+
+	- Improved checking of regexes within grammars 
+
+	- Added subrule arguments (major change to internal grammar parser)
+
+	- Added <matchrule:...> directive
+
+	- started work on Compile() option (not complete yet - do not use!)
+
+	- Made generated code "use strict"
+
+	- Fixed bug which incorrectly warned against items
+	  following a <error?> directive.
+
+	- Improved $thisline (added assignment and resync)
+
+	- Fixed expectation messages for subrules
+
+	- Rearranged tar file to co-operate with CPAN.pm

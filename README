@@ -14,6 +14,8 @@ DESCRIPTION
 
         * Repeated, optional and alternate subrules within productions,
 
+	* Late-bound (run-time dispatched) subrules
+
         * Full access to Perl within actions specified as part of the grammar,
 
         * Simple automated error reporting during parser generation and parsing,
@@ -49,11 +51,11 @@ INSTALLATION
 
 CHANGES AND FUTURE DEVELOPMENT
 
-    This is version 1.10.
-    The previous version was 1.01.
+    This readme refers to versions 1.XX.
     For details of changes, refer to the file Changes.
-    No future development is currently planned, but your welcome to
-    send the author feedback that might lead to some.
+
+    Version 2.00 will provide an optional parser compiler to generate
+    separate parsing modules with no construction run-time overhead.
 
 
 AUTHOR
@@ -63,7 +65,7 @@ AUTHOR
 
 COPYRIGHT
 
-       Copyright (c) 1997, Damian Conway. All Rights Reserved.
+     Copyright (c) 1997-1998, Damian Conway. All Rights Reserved.
      This module is free software. It may be used, redistributed
      and/or modified under the terms of the Perl Artistic License
           (see http://www.perl.com/perl/misc/Artistic.html)
