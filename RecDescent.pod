@@ -176,8 +176,9 @@ attempt to match the named rule at that point in the text being
 parsed. If the named subrule is not defined at that point the
 production containing it immediately fails.
 
-A rule may (recursively) call itself as a subrule, but I<not> as the left-most
-item in any of its productions (since such a recursion would never terminate).
+A rule may (recursively) call itself as a subrule, but I<not> as the
+left-most item in any of its productions (since such recursions are usually
+non-terminating).
 
 The value associated with a subrule is the value associated with its
 C<$return> variable (see L<"Actions"> below), or with the last successfully
@@ -311,10 +312,21 @@ things should be okay):
 The array slice C<@item[1..$#item]> stores the value associated with each item
 (that is, each subrule, token, or action) in the current production. The
 analogy is to C<$1>, C<$2>, etc. in a I<yacc> grammar.
+Note that, for obvious reasons, C<@item> only contains the
+values of items I<before> the current point in the production.
 
 The first element (C<$item[0]>) stores the name of the current rule
-being matched. Note that, for obvious reasons, C<@item> only contains the
-values of items I<before> the current point in the production.
+being matched.
+
+C<@item> is a standard Perl array, so it can also be indexed with negative
+numbers, representing the number of items I<back> from the current position in
+the parse:
+
+		stuff: /various/ bits 'and' pieces "then" data 'end'
+				{ print @item[-2] }  # PRINTS data
+						     # (EASIER THAN: @item[6])
+
+
 
 =item C<$return>
 
@@ -336,8 +348,17 @@ below).
 
 =item C<$text>
 
-The remaining (unparsed) text. Changes to C<$text> I<do not propagate> out of
-the current production.
+The remaining (unparsed) text. Changes to C<$text> I<do not
+propagate> out of unsuccessful productions, but I<do> survive
+successful productions. Hence it is possible to dynamically alter the
+text being parsed - for example, to provide a C<#include>-like facility:
+
+	hash_include: '#include' filename
+				{ $text = ::loadfile($item[2]) . $text }
+
+	filename: '<' /[a-z0-9._-]+/i '>'  { $return = $item[2] }
+		| '"' /[a-z0-9._-]+/i '"'  { $return = $item[2] }
+
 
 =item C<$thisline>
 
@@ -791,14 +812,19 @@ pair of round brackets. For example:
 
 		character: 'the' ( good | bad | ugly ) /dude/
 
-Every alternation implicitly defines a new subrule (imaginatively named
-"implicit_subrule_<N>" for increasing values of <N> starting at "000001"),
-and inserts a call to that implicit subrule in place of the brackets.
-Hence the above example is merely a convenient short-hand for:
+Every alternation implicitly defines a new subrule, whose
+automatically-generated name indicates its origin:
+"_alternation_<I>_of_production_<P>_of_rule<R>" for the appropriate
+values of <I>, <P>, and <R>. A call to this implicit subrule is then
+inserted in place of the brackets. Hence the above example is merely a
+convenient short-hand for:
 
-		character: 'the' implicit_subrule_000001 /dude/
+		character: 'the'
+			   _alternation_1_of_production_1_of_rule_character
+			   /dude/
 
-		implicit_subrule_000001: good | bad | ugly
+		_alternation_1_of_production_1_of_rule_character:
+			   good | bad | ugly
 
 Since alternations are parsed by recursively calling the parser generator, 
 any type(s) of item can appear in an alternation. For example:
@@ -816,10 +842,18 @@ message would be:
 		                  'high' or /no[- ]name/ or generic,
 				  but found "pacifist" instead
 
-Since every implicit subrule actually has a name, it's even possible
+Since every alternation actually has a name, it's even possible
 to extend or replace them:
 
-		parser->Replace("implicit_subrule_000001: 'generic Eastwood'");
+		parser->Replace(
+			"_alternation_1_of_production_1_of_rule_character:
+				'generic Eastwood'"
+				);
+
+More importantly, since alternations are a form of subrule, they can be given
+repetition specifiers:
+
+		character: 'the' ( good | bad | ugly )(?) /dude/
 
 
 =head2 Incremental Parsing
@@ -919,14 +953,14 @@ C<Parse::RecDescent::new> (specified in the C<Parse::RecDescent> grammar format!
 		   | /"([\]"|[^"])*"/		      # interpolated literal
 		   | /'([\]'|[^'])*'/		      # uninterpolated literal
 
-	action     : '{' {extract_codeblock()} '}'    # embedded Perl code
+	action     : { extract_codeblock($text) }     # embedded Perl code
 
 	bracket    : '(' item(s) production(s?) ')'   # alternative subrules
 
 	directive  : '<commit>'			      # commit to production
 		   | '<uncommit>'		      # cancel commitment
 		   | '<resync>'			      # skip to newline
-		   | '<resync: pattern '>'	      # skip <pattern>
+		   | '<resync:' pattern '>'	      # skip <pattern>
 		   | '<reject>'			      # fail this production
 		   | '<reject:' condition '>'	      # fail if <condition>
 		   | '<error>'			      # report an error
@@ -934,15 +968,15 @@ C<Parse::RecDescent::new> (specified in the C<Parse::RecDescent> grammar format!
 		   | '<error?>'			      # error only if committed
 		   | '<error?:' msg '>'               #   "    "    "    "
 
-	identifier : /[A-Za-z]\w*/		      # must start with alpha
+	identifier : /[a-z]\w*/i		      # must start with alpha
 
 	comment    : /#[^\n]*/                        # same as Perl
 
-	pattern    : { extract_bracketed('<') }	      # allow embedded "<..>"
+	pattern    : {extract_bracketed($text,'<')}   # allow embedded "<..>"
 
-	condition  : { extract_codeblock('{<') }      # full Perl expression
+	condition  : {extract_codeblock($text,'{<')}  # full Perl expression
 
-	msg        : { extract_bracketed('<') }	      # allow embedded "<..>"
+	msg        : {extract_bracketed($text'<')}    # allow embedded "<..>"
 
 
 =head1 DIAGNOSTICS

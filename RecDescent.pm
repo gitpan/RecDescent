@@ -59,6 +59,7 @@ sub new ($$$$$)
 				"changed"  => 0,
 				"tokensep" => undef,
 				"line"     => $line,
+				"impcount" => 0,
 			}, $class;
 	}
 }
@@ -68,6 +69,7 @@ sub reset($)
 	@{$_[0]->{"prods"}} = ();
 	@{$_[0]->{"calls"}} = ();
 	$_[0]->{"changed"}  = 0;
+	$_[0]->{"impcount"}  = 0;
 }
 
 sub DESTROY {}
@@ -139,8 +141,17 @@ sub addprod($$)
 	my ( $self, $prod ) = @_;
 	push @{$self->{"prods"}}, $prod;
 	$self->{"changed"} = 1;
+	$self->{"impcount"} = 0;
 	$prod->{"number"} = $#{$self->{"prods"}};
 	return $prod;
+}
+
+sub nextimplicit($)
+{
+	my $self = shift;
+	my $prodcount = scalar @{$self->{"prods"}};
+	my $impcount = ++$self->{"impcount"};
+	return "_alternation_${impcount}_of_production_${prodcount}_of_rule_$self->{name}";
 }
 
 sub code($$)
@@ -249,7 +260,9 @@ sub new ($$;$$)
 
 sub expected ($)
 {
-	return $_[0]->{"items"}[0]->describe();
+	return (defined $_[0]->{"items"}[0])
+		? return $_[0]->{"items"}[0]->describe()
+		: '';
 }
 
 sub hasleftmost ($$)
@@ -714,19 +727,23 @@ sub code($$$)
 package Parse::RecDescent::Repetition;
 
 sub issubrule ($) { return $_[0]->{"subrule"} }
-sub describe ($) { "$_[0]->{subrule}" }
+sub describe ($) { $_[0]->{"expected"} || $_[0]->{"subrule"} }
 
-sub new ($$$$$$$)
+sub new ($$$$$$$$)
 {
-	my ($self, $subrule, $repspec, $min, $max, $lookahead, $line) = @_;
+	my ($self, $subrule, $repspec, $min, $max, $lookahead, $line, $parser) = @_;
 	my $class = ref($self) || $self;
 	($max, $min) = ( $min, $max) if ($max<$min);
+
+	my $desc;
+	if ($subrule=~/\A_alternation_\d+_of_production_\d+_of_rule/)
+		{ $desc = $parser->{"rules"}{$subrule}->expected }
 
 	if ($lookahead)
 	{
 		if ($min>0)
 		{
-		   return new Parse::RecDescent::Subrule($subrule,$lookahead);
+		   return new Parse::RecDescent::Subrule($subrule,$lookahead,$line,$desc);
 		}
 		else
 		{
@@ -750,6 +767,7 @@ sub new ($$$$$$$)
 		"max"       => $max,
 		"lookahead" => $lookahead,
 		"line"      => $line,
+		"expected"  => $desc,
 	}, $class;
 }
 
@@ -836,7 +854,7 @@ package Parse::RecDescent;
 use Carp;
 use vars qw ( $AUTOLOAD $VERSION );
 
-$VERSION = 1.21;
+$VERSION = 1.23;
 
 # BUILDING A PARSER
 
@@ -902,8 +920,6 @@ my $BETWEEN		= $SUBRULE.'\((\d+)\.\.([1-9]\d*)\)';
 my $ATLEAST		= $SUBRULE.'\((\d+)\.\.\)';
 my $ATMOST		= $SUBRULE.'\(\.\.([1-9]\d*)\)';
 my $BADREP		= "($SUBRULE".'\((-?\d+)?\.\.(-?\d+)?\))';
-# my $ACTION		= '\A\s*\{\{((?:(?!\}\})(?:.|\n))*)\}\}';
-# my $IMPLICITSUBRULE	= '\A\s*\(\(((?:(?!\)\))(?:.|\n))*)\)\)';
 my $ACTION		= '\A\s*\{';
 my $IMPLICITSUBRULE	= '\A\s*\(';
 my $COMMENT		= '\A\s*(#.*)';
@@ -919,8 +935,6 @@ my $UNCOMMITPROD	= $PROD.'\s*(?=<uncommit)';
 my $ERRORPROD		= $PROD.'\s*(?=<error)';
 my $OTHER		= '\A\s*([^\s]+)';
 
-my $_implicit = "implicitSubrule0000001";
-
 my $lines = 0;
 
 my $ERRORS = 0;
@@ -929,7 +943,8 @@ sub _generate($$$)
 {
 	my ($self, $grammar, $replace) = @_;
 
-	my $isimplicit = ($grammar =~ /^implicitSubrule/);
+	my $isimplicit =
+		($grammar =~ /\A_alternation_\d+_of_production_\d+_of_rule/);
 
 	my $aftererror = 0;
 	my $lookahead = 0;
@@ -983,14 +998,9 @@ sub _generate($$$)
 			$code =~ s/\A\s*\(|\)\Z//g;
 			_parse("an implicit subrule", $aftererror, $line,
 				"( $code )");
-			my $implicit = $_implicit++;
-			print "<<<<$implicit>>>>\n";
+			my $implicit = $rule->nextimplicit;
 			$self->_generate("$implicit : $code",0);
-			$item = new Parse::RecDescent::Subrule($implicit,$lookahead,$line,$self->{"rules"}{$implicit}->expected);
-			$prod and $prod->additem($item)
-			      or  _no_rule("implicit subrule",$line,$code);
-
-			$rule and $rule->addcall($implicit);
+			$grammar = $implicit . $grammar;
 		}
 		elsif ($grammar =~ s/$UNCOMMITPROD//)
 		{
@@ -1086,7 +1096,7 @@ sub _generate($$$)
 				$code })
 		{
 			_parse("an error marker", $aftererror,$line,$code);
-			$code =~ /\A\s*<error:(.*)>\Z/s;
+			$code =~ /\A\s*<error\??:(.*)>\Z/s;
 			$item = new Parse::RecDescent::Error($1,$lookahead,$commitonly,$line);
 			$prod and $prod->additem($item)
 			      or  _no_rule("$code",$line);
@@ -1160,7 +1170,8 @@ sub _generate($$$)
 		{
 			_parse("an zero-or-one subrule match", $aftererror,$line);
 			$item = new Parse::RecDescent::Repetition($1,$2,0,1,
-							   $lookahead,$line);
+							   $lookahead,$line,
+							   $self);
 			$prod and $prod->additem($item)
 			      or  _no_rule("repetition",$line,"$1($2)");
 
@@ -1170,7 +1181,8 @@ sub _generate($$$)
 		{
 			_parse("a zero-or-more subrule match", $aftererror,$line);
 			$item = new Parse::RecDescent::Repetition($1,$2,0,$MAXREP,
-							   $lookahead,$line);
+							   $lookahead,$line,
+							   $self);
 			$prod and $prod->additem($item)
 			      or  _no_rule("repetition",$line,"$1($2)");
 
@@ -1182,7 +1194,9 @@ sub _generate($$$)
 		{
 			_parse("a one-or-more subrule match", $aftererror,$line);
 			$item = new Parse::RecDescent::Repetition($1,$2,1,$MAXREP,
-							   $lookahead,$line);
+							   $lookahead,$line,
+							   $self);
+							   
 			$prod and $prod->additem($item)
 			      or  _no_rule("repetition",$line,"$1($2)");
 
@@ -1194,7 +1208,8 @@ sub _generate($$$)
 		{
 			_parse("an exactly-$2-times subrule match", $aftererror,$line);
 			$item = new Parse::RecDescent::Repetition($1,$2,$2,$2,
-							   $lookahead,$line);
+							   $lookahead,$line,
+							   $self);
 			$prod and $prod->additem($item)
 			      or  _no_rule("repetition",$line,"$1($2)");
 
@@ -1204,7 +1219,8 @@ sub _generate($$$)
 		{
 			_parse("a $2-to-$3 subrule match", $aftererror,$line);
 			$item = new Parse::RecDescent::Repetition($1,"$2..$3",$2,$3,
-							   $lookahead,$line);
+							   $lookahead,$line,
+							   $self);
 			$prod and $prod->additem($item)
 			      or  _no_rule("repetition",$line,"$1($2..$3)");
 
@@ -1214,7 +1230,8 @@ sub _generate($$$)
 		{
 			_parse("a $2-or-more subrule match", $aftererror,$line);
 			$item = new Parse::RecDescent::Repetition($1,"$2..",$2,$MAXREP,
-							   $lookahead,$line);
+							   $lookahead,$line,
+							   $self);
 			$prod and $prod->additem($item)
 			      or  _no_rule("repetition",$line,"$1($2..)");
 
@@ -1226,7 +1243,8 @@ sub _generate($$$)
 		{
 			_parse("a one-to-$2 subrule match", $aftererror,$line);
 			$item = new Parse::RecDescent::Repetition($1,"..$2",1,$2,
-							   $lookahead,$line);
+							   $lookahead,$line,
+							   $self);
 			$prod and $prod->additem($item)
 			      or  _no_rule("repetition",$line,"$1(..$2)");
 
@@ -1244,11 +1262,16 @@ sub _generate($$$)
 		elsif ($grammar =~ s/$SUBRULE// )
 		{
 			_parse("a subrule match", $aftererror,$line);
-			$item = new Parse::RecDescent::Subrule($1,$lookahead,$line);
+			# EXPERIMENTAL
+			my $name = $1;
+			my $desc;
+			if ($name=~/\A_alternation_\d+_of_production_\d+_of_rule/)
+				{ $desc = $self->{"rules"}{$name}->expected }
+			$item = new Parse::RecDescent::Subrule($name,$lookahead,$line,$desc);
 			$prod and $prod->additem($item)
-			      or  _no_rule("(sub)rule",$line,$1);
+			      or  _no_rule("(sub)rule",$line,$name);
 
-			$rule and $rule->addcall($1);
+			$rule and $rule->addcall($name);
 		}
 		elsif ($grammar =~ s/$OTHER//   )
 		{
@@ -1312,7 +1335,7 @@ sub _generate($$$)
 sub _addstartcode($$)
 {
 	my ($self, $code) = @_;
-	$code =~ s/\A\s*\{(.*)\}\Z/$1/;
+	$code =~ s/\A\s*\{(.*)\}\Z/$1/s;
 
 	$self->{"startcode"} .= "$code;\n";
 }

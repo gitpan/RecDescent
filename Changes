@@ -56,3 +56,22 @@ Revision history for Perl extension Parse::RecDescent.
 	- fixed bug in generation of special namespaces (this was serious
 	  as it prevented the use of more than one alternation in a parser,
 	  as well as preventing the use of more than one parser in a script!
+
+
+1.23  Fri Oct 17 10:15:22 EST 1997
+
+	- fixed error message generation for <error?:msg> directives
+
+	- fixed error message handling of empty productions
+
+	- fixed handling of multi-line start-up actions
+
+	- removed spurious debugging message for implicit subrule generation
+
+	- changed naming scheme for alternations (pseudo-rule's name now
+	  describes location of alternation exactly)
+
+	- added support for repetition specifiers on alternations.
+
+	- Text::Balanced::extract_.... altered to honour the context in
+	  which they are called (see Balanced.pod for details).
