@@ -1,0 +1,66 @@
+NAME
+
+    Parse::RecDescent - generate recursive-descent parsers
+
+
+DESCRIPTION
+
+    RecDescent incrementally generates top-down recursive-descent text
+    parsers from simple yacc-like grammar specifications. It provides:
+
+        * Regular expressions or literal strings as terminals (tokens),
+
+        * Multiple (non-contiguous) productions for any rule,
+
+        * Repeated, optional and alternate subrules within productions,
+
+        * Full access to Perl within actions specified as part of the grammar,
+
+        * Simple automated error reporting during parser generation and parsing,
+
+        * The ability to commit to, uncommit to, or reject particular
+          productions during a parse,
+
+        * Incremental extension of the parsing grammar (even during a parse),
+
+        * The ability to retrieve the generated parsing code.
+
+    See the file "RecDescent.pod" for excruciating detail on all of this.
+
+
+LIMITATIONS
+
+    * There's no support for parsing directly from an input stream.
+
+    * The generator doesn't handle left-recursion.
+
+
+PREREQUISITES
+
+    Parse::RecDescent requires Text::Balanced, which is included in the
+    distribution.
+
+
+INSTALLATION
+
+    It's all pure Perl, so just put the .pm files in their appropriate
+    local Perl subdirectories.
+
+
+CHANGES AND FUTURE DEVELOPMENT
+
+    This is version 1.00, so no there are changes yet. For possible future
+    directions see the appropriate section in "RecDescent.pod".
+
+
+AUTHOR
+
+    Damian Conway (damian@cs.monash.edu.au)
+
+
+COPYRIGHT
+
+       Copyright (c) 1997, Damian Conway. All Rights Reserved.
+     This module is free software. It may be used, redistributed
+     and/or modified under the terms of the Perl Artistic License
+          (see http://www.perl.com/perl/misc/Artistic.html)

@@ -1,0 +1,13 @@
+Balanced.pm
+Balanced.pod
+Changes
+MANIFEST
+Makefile.PL
+README
+RecDescent.pm
+RecDescent.pod
+demo_bad.pl
+demo_derived.pl
+demo_mccoy.pl
+demo_selfmod.pl
+demo_simple.pl
