@@ -768,7 +768,7 @@ package Parse::RecDescent;
 use Carp;
 use vars qw ( $AUTOLOAD $VERSION );
 
-$VERSION = 1.00;
+$VERSION = 1.01;
 
 # BUILDING A PARSER
 

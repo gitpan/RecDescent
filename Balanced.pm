@@ -6,17 +6,18 @@ use strict;
 package Text::Balanced;
 
 use Exporter;
+use vars qw { $VERSION @ISA @EXPORT_OK };
 
-$Text::Balanced::VERSION	= 1.00;
-@Text::Balanced::ISA		= qw ( Exporter );
-@Text::Balanced::EXPORT_OK	= qw (
-					&extract_delimited
-					&extract_bracketed
-					&extract_quotelike
-					&extract_codeblock
-				     );
+$VERSION	= 1.01;
+@ISA		= qw ( Exporter );
+@EXPORT_OK	= qw (
+			&extract_delimited
+			&extract_bracketed
+			&extract_quotelike
+			&extract_codeblock
+		     );
 
-# IGNORE THE TRACE BEHIND THE CURTAIN
+# PAY NO ATTENTION TO THE TRACE BEHIND THE CURTAIN
 # sub _trace($) { print $_[0], "\n" if defined $Balanced::TRACE; }
 sub _trace($) {}
 
@@ -52,8 +53,8 @@ sub extract_bracketed (;$$$)
 	unless ($rdel =~ tr/[({</])}>/)
 	    { $@ = "Did not find a suitable bracket: \"$ldel\""; return @fail; }
 
-	$ldel = join('|', map { quotemeta } split('', $ldel));
-	$rdel = join('|', map { quotemeta } split('', $rdel));
+	$ldel = join('|', map { quotemeta $_ } split('', $ldel));
+	$rdel = join('|', map { quotemeta $_ } split('', $rdel));
 
 	unless ($text =~ m/\A($ldel)/)
 	    { $@ = "Did not find opening bracket after prefix: \"$pre\"";
@@ -103,8 +104,8 @@ sub extract_codeblock (;$$$)
 	my ($ldel, $rdel) = ($del, $del);
 	$ldel =~ tr/[]()<>{}\0-\377/[[((<<{{/ds;
 	$rdel =~ tr/[]()<>{}\0-\377/]]))>>}}/ds;
-	$ldel = '('.join('|',map { quotemeta } split('',$ldel)).')';
-	$rdel = '('.join('|',map { quotemeta } split('',$rdel)).')';
+	$ldel = '('.join('|',map { quotemeta $_ } split('',$ldel)).')';
+	$rdel = '('.join('|',map { quotemeta $_ } split('',$rdel)).')';
 	_trace("Trying /$ldel/../$rdel/");
 	my @fail = ('',$text,'');
 	$@ = '';
