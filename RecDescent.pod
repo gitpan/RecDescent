@@ -209,9 +209,9 @@ subrule "statement".
 
 =head2 Tokens
 
-If a quote-delimited string or a backslash-delimited pattern appears
-in a production, the parser attempts to match that string or pattern at
-that point in the text. For example:
+If a quote-delimited string or a Perl regex appears in a production,
+the parser attempts to match that string or pattern at that point in
+the text. For example:
 
 		typedef: "typedef" typename identifier ';'
 
@@ -229,6 +229,22 @@ possible to define rules in which tokens can be set at run-time:
 Note that, since each rule is implemented inside a special namespace
 belonging to its parser, it is necessary to explicitly quantify
 variables from the main package.
+
+Regex tokens can be specified using just backslashes as delimiters
+or with the explicit C<m<delimiterE<gt>......<delimiterE<gt>> syntax:
+
+		typedef: "typedef" typename identifier ';'
+
+		identifier: m{[A-Za-z_][A-Za-z0-9_]*}
+
+A regex of either type can also have any valid trailing parameter(s)
+(that is, any of [gimsox]):
+
+		typedef: "typedef" typename identifier ';'
+
+		identifier: / [a-z_] 		# LEADING ALPHA OR UNDERSCORE
+			      [a-z0-9_]*	# THEN DIGITS ALSO ALLOWED
+			    /ix			# CASE/SPACE/COMMENT INSENSITIVE
 
 The value associated with any successfully matched token is a string
 containing the actual text which was matched by the token.
@@ -322,6 +338,13 @@ below).
 
 The remaining (unparsed) text. Changes to C<$text> I<do not propagate> out of
 the current production.
+
+=item C<$thisline>
+
+The current line number within the current parse (starting from 1). For
+efficiency, C<$thisline> is actually a tied hash, and only recomputes the
+current line number when the variable's value is used.
+Assignment to C<$thisline> has no effect.
 
 =item C<$thisparser>
 

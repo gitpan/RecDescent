@@ -49,8 +49,11 @@ INSTALLATION
 
 CHANGES AND FUTURE DEVELOPMENT
 
-    This is version 1.00, so no there are changes yet. For possible future
-    directions see the appropriate section in "RecDescent.pod".
+    This is version 1.10.
+    The previous version was 1.01.
+    For details of changes, refer to the file Changes.
+    No future development is currently planned, but your welcome to
+    send the author feedback that might lead to some.
 
 
 AUTHOR

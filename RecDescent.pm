@@ -5,13 +5,29 @@ use strict;
 
 package Parse::RecDescent;
 
-use Text::Balanced qw ( extract_codeblock extract_bracketed );
+use Text::Balanced qw ( extract_codeblock extract_bracketed extract_quotelike );
 
 use vars qw ( $tokensep );
 
    *deftokensep  = \'\s*';	# DEFAULT SEPARATOR IS OPTIONAL WHITESPACE
    $tokensep  = '\s*';		# UNIVERSAL SEPARATOR IS OPTIONAL WHITESPACE
 my $MAXREP  = 100_000_000;	# REPETITIONS MATCH AT MOST 100,000,000 TIMES
+
+package Parse::RecDescent::LineCounter;
+
+sub TIESCALAR
+{
+	bless { offset => $_[1], text => $_[2] }, $_[0];
+}
+
+sub FETCH    
+{
+	${$_[0]->{offset}}-Parse::RecDescent::_linecount(${$_[0]->{text}})+1;
+}
+
+sub STORE
+{}
+
 
 package Parse::RecDescent::Rule;
 
@@ -143,7 +159,7 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	$ERRORS = 0;
 	my $_linenum = $_[2] ? $_[2] : Parse::RecDescent::_linecount($_[1]);
 	my $thisrule = $thisparser->{"rules"}{"' . $self->{"name"} . '"};
-	Parse::RecDescent::_trace("Trying rule: ' . $self->{"name"} . ' at \"$_[1]\"");
+	Parse::RecDescent::_trace(qq{Trying rule: ' . $self->{"name"} . ' at "$_[1]"});
 	my $_tok;
 	my $return = undef;
 	my $_matched=0;
@@ -155,6 +171,9 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	my $lastsep="";
 	my $expectation = new Parse::RecDescent::Expectation($thisrule->expected());
 	$expectation->at($_[1]);
+
+	my $thisline;
+	tie $thisline, q{Parse::RecDescent::LineCounter}, \$_linenum, \$text;
 
 ';
 
@@ -169,10 +188,10 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	$_[1] = $text;
         unless ( $_matched || $return )
 	{
-		Parse::RecDescent::_trace("Didn\'t match rule: '. $self->{"name"} .'");
+		Parse::RecDescent::_trace(qq{Didn\'t match rule: '. $self->{"name"} .'});
 		return undef;
 	}
-	Parse::RecDescent::_trace("Matched rule: '. $self->{"name"} .'");
+	Parse::RecDescent::_trace(qq{Matched rule: '. $self->{"name"} .'});
 	return defined($return)?$return:$item[$#item];
 }
 ';
@@ -261,7 +280,7 @@ sub code($$$)
 	. (defined $self->{"uncommit"} ? '' : ' && !$commit')
 	. ')
 	{
-		Parse::RecDescent::_trace("Trying production: [' . $self->describe . '] at \"$_[1]\"");
+		Parse::RecDescent::_trace(qq{Trying production: [' . $self->describe . '] at "$_[1]"});
 		my $thisprod = $thisrule->{"prods"}[' . $self->{"number"} . '];
 		' . (defined $self->{"error"} ? '' : '$text = $_[1];' ) . '
 		my $_savetext;
@@ -383,7 +402,7 @@ sub code($$$)
 	if ($self->{"msg"})  # ERROR MESSAGE SUPPLIED
 	{
 		$action .= "Parse::RecDescent::_error(qq{$self->{msg}}" .
-			    ',$_linenum-Parse::RecDescent::_linecount($text)+1);'; 
+			    ',$thisline);'; 
 	}
 	else	  # GENERATE ERROR MESSAGE DURING PARSE
 	{
@@ -393,9 +412,7 @@ sub code($$$)
 		   $rule =~ s/_/ /g;
 		Parse::RecDescent::_error("Invalid $rule: "
 					  . $expectation->message()
-			   		  ,$_linenum-
-					   Parse::RecDescent::_linecount($text)
-					   +1);
+			   		  ,$thisline);
 		'; 
 	}
 
@@ -415,18 +432,28 @@ sub issubrule { undef }
 sub describe ($)
 {
 	my $pat = $_[0]->{pattern};
+	my $ldel = $_[0]->{ldelim};
+	my $rdel = $_[0]->{rdelim};
+	my $mod  = $_[0]->{mod};
 	$pat=~s/\\/\\\\/g;
-	return '/' . eval("qq{$pat}") . '/';
+	if ($pat=~s/\$$//) { return "m$ldel".eval("qq{$pat}").'\$'."$rdel$mod" }
+	else               { return "m$ldel".eval("qq{$pat}")."$rdel$mod" }
 }
 
-sub new ($$$$)
+# ARGS ARE: $self, $pattern, $left_delim, $modifiers, $lookahead, $linenum
+sub new ($$$$$$)
 {
 	my $class = ref($_[0]) || $_[0];
+	my $ldel = $_[2];
+	my $rdel = $ldel;
+	$rdel =~ tr/{[(</}])>/;
+	my $mod = $_[3];
 
-	if (!eval "'' =~ m/$_[1]/" and $@)
+	if (!eval "'' =~ m$ldel$_[1]$rdel" and $@)
 	{
-		Parse::RecDescent::_error("Token \"/$_[1]/\" is not a valid regular
-	    	                    expression",$_[3]);
+		Parse::RecDescent::_error("Token pattern \"m$ldel$_[1]$rdel\"
+					   is not a valid regular expression",
+					   $_[5]);
 		$@ =~ s/ at \(eval.*/./;
 		Parse::RecDescent::_hint($@);
 	}
@@ -434,17 +461,26 @@ sub new ($$$$)
 	bless 
 	{
 		"pattern"   => $_[1],
-		"lookahead" => $_[2],
-		"line"      => $_[3],
+		"ldelim"    => $ldel,
+		"rdelim"    => $rdel,
+		"mod"       => $mod,
+		"lookahead" => $_[4],
+		"line"      => $_[5],
 	}, $class;
 }
 
 sub code($$$)
 {
 	my ($self, $namespace, $rule) = @_;
+	my $ldel = $self->{"ldelim"};
+	my $rdel = $self->{"rdelim"};
+	my $sdel = $ldel;
+	my $mod  = $self->{"mod"};
+
+	$sdel =~ s/[[{(<]/{}/;
 	
 my $code = '
-		Parse::RecDescent::_trace("Trying token: ' . $self->describe . ' at \"$text\"");
+		Parse::RecDescent::_trace(qq{Trying token: ' . $self->describe . ' at "$text"});
 		$lastsep = "";
 		$_toksep =
 		    defined $tokensep		     ? $tokensep
@@ -453,19 +489,20 @@ my $code = '
 		  : defined $thisparser->{"tokensep"}? $thisparser->{"tokensep"}
 		  : defined $Parse::RecDescent::tokensep    ? $Parse::RecDescent::tokensep 
 						     : $Parse::RecDescent::deftokensep;
-		Parse::RecDescent::_trace("tokensep: [$_toksep]");
+		Parse::RecDescent::_trace(qq{tokensep: [$_toksep]});
 		$expectation->is(q{' . ($rule->hasleftmost($self) ? ''
 				: $self->describe ) . '})->at($text);
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) . '
 
 		' . ($self->{"lookahead"}<0?'if':'unless')
 		. ' ($text =~ s/\A($_toksep)/$lastsep=$1 and ""/e and '
-		. '  $text =~ s/\A(?:' . $self->{"pattern"} . ')//)
+		. '  $text =~ s' . $ldel . '\A(?:' . $self->{"pattern"} . ')'
+				 . $rdel . $sdel . $mod . ')
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
-			Parse::RecDescent::_trace("Failed on: [$text]");
-			Parse::RecDescent::_trace("Lastsep:   [$lastsep]");
+			Parse::RecDescent::_trace(qq{Failed on: [$text]});
+			Parse::RecDescent::_trace(qq{Lastsep:   [$lastsep]});
 
 			last;
 		}
@@ -502,7 +539,7 @@ sub code($$$)
 	my ($self, $namespace, $rule) = @_;
 	
 my $code = '
-		Parse::RecDescent::_trace("Trying token: ' . $self->describe . ' at \"$text\"");
+		Parse::RecDescent::_trace(qq{Trying token: ' . $self->describe . ' at "$text"});
 		$lastsep = "";
 		$_toksep =
 		    defined $tokensep		     ? $tokensep
@@ -511,7 +548,7 @@ my $code = '
 		  : defined $thisparser->{"tokensep"}? $thisparser->{"tokensep"}
 		  : defined $Parse::RecDescent::tokensep    ? $Parse::RecDescent::tokensep 
 						     : $Parse::RecDescent::deftokensep;
-		Parse::RecDescent::_trace("tokensep: [$_toksep]");
+		Parse::RecDescent::_trace(qq{tokensep: [$_toksep]});
 		$expectation->is(q{' . ($rule->hasleftmost($self) ? ''
 				: $self->describe ) . '})->at($text);
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) . '
@@ -522,8 +559,8 @@ my $code = '
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
-			Parse::RecDescent::_trace("Failed on: [$text]");
-			Parse::RecDescent::_trace("Lastsep:   [$lastsep]");
+			Parse::RecDescent::_trace(qq{Failed on: [$text]});
+			Parse::RecDescent::_trace(qq{Lastsep:   [$lastsep]});
 			last;
 		}
 		push @item, $&;
@@ -574,7 +611,7 @@ my $code = '
 		  : defined $thisparser->{"tokensep"}? $thisparser->{"tokensep"}
 		  : defined $Parse::RecDescent::tokensep    ? $Parse::RecDescent::tokensep 
 						     : $Parse::RecDescent::deftokensep;
-		Parse::RecDescent::_trace("tokensep: [$_toksep]");
+		Parse::RecDescent::_trace(qq{tokensep: [$_toksep]});
 		$expectation->is(q{' . ($rule->hasleftmost($self) ? ''
 				: $self->describe ) . '})->at($text);
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) . '
@@ -585,8 +622,8 @@ my $code = '
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
-			Parse::RecDescent::_trace("Failed on: [$text]");
-			Parse::RecDescent::_trace("Lastsep:   [$lastsep]");
+			Parse::RecDescent::_trace(qq{Failed on: [$text]});
+			Parse::RecDescent::_trace(qq{Lastsep:   [$lastsep]});
 			last;
 		}
 		push @item, $&;
@@ -752,12 +789,12 @@ sub message ($)
 	$self->{expected} =~ s/_/ /g;
 	if (!$self->{unexpected} || $self->{unexpected} =~ /\A\s*\Z/s)
 	{
-		return "Expected $self->{expected} not found";
+		return "Was expecting $self->{expected}";
 	}
 	else
 	{
 		$self->{unexpected} =~ /\s*(.*)/;
-		return "Expected $self->{expected} but found \"$1\" instead";
+		return "Was expecting $self->{expected} but found \"$1\" instead";
 	}
 }
 
@@ -768,7 +805,7 @@ package Parse::RecDescent;
 use Carp;
 use vars qw ( $AUTOLOAD $VERSION );
 
-$VERSION = 1.01;
+$VERSION = 1.10;
 
 # BUILDING A PARSER
 
@@ -820,7 +857,8 @@ my $NEGLOOKAHEAD	= '\A(\s*\.\.\.!)';
 my $POSLOOKAHEAD	= '\A(\s*\.\.\.)';
 my $RULE		= '\A\s*(\w+)\s*:';
 my $PROD		= '\A\s*([|])';
-my $TOKEN		= q{\A\s*/((\\\\/|[^/])+)/};
+my $TOKEN		= q{\A\s*/((\\\\/|[^/])+)/\s*([simox]*)};
+my $MTOKEN		= q{\A\s*m[^\w\s]};
 my $LITERAL		= q{\A\s*'((\\\\'|[^'])+)'};
 my $INTERPLIT		= q{\A\s*"((\\\\"|[^"])+)"};
 my $SUBRULE		= '\A\s*(\w+)';
@@ -877,6 +915,7 @@ sub _generate($$$)
 		$line = $lines - _linecount($grammar) + 1;
 		my $commitonly;
 		my $code = "";
+		my @components = ();
 		if ($grammar =~ s/$COMMENT//)
 		{
 			_parse("a comment",0,$line);
@@ -1067,9 +1106,22 @@ sub _generate($$$)
 		elsif ($grammar =~ s#$TOKEN##)
 		{
 			_parse("a pattern token", $aftererror,$line);
-			$item = new Parse::RecDescent::Token($1,$lookahead,$line);
+			$item = new Parse::RecDescent::Token($1,'/',$3?$3:'',$lookahead,$line);
 			$prod and $prod->additem($item)
 			      or  _no_rule("regex token",$line,"/$1/");
+		}
+		elsif ($grammar =~ m#$MTOKEN#
+			and do { ($code,$grammar,@components)
+					= extract_quotelike($grammar);
+				 $code }
+		      )
+
+		{
+			_parse("a pattern token", $aftererror,$line,$code);
+			$item = new Parse::RecDescent::Token(@components[3,2,8],
+							     $lookahead,$line);
+			$prod and $prod->additem($item)
+			      or  _no_rule("regex token",$line,$code);
 		}
 		elsif ($grammar =~ s/$OPTIONAL//)
 		{
@@ -1296,7 +1348,7 @@ sub _check_grammar ($)
 sub _code($)
 {
 	my $self = shift;
-	my $code = "";
+	my $code = '';
 
 	my $rule;
 	foreach $rule ( values %{$self->{"rules"}} )
@@ -1315,6 +1367,7 @@ sub _code($)
 
 sub AUTOLOAD
 {
+	die "Could not find method: $AUTOLOAD\n" unless ref $_[0];
 	my $class = ref($_[0]) || $_[0];
 	$AUTOLOAD =~ s/$class/$_[0]->{namespace}/;
 	goto &$AUTOLOAD;

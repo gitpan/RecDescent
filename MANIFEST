@@ -8,6 +8,8 @@ RecDescent.pm
 RecDescent.pod
 demo_bad.pl
 demo_derived.pl
+demo_decomment.pl
 demo_mccoy.pl
+demo_methods.pl
 demo_selfmod.pl
 demo_simple.pl

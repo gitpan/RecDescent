@@ -6,3 +6,9 @@ Revision history for Perl extension Parse::RecDescent.
 1.01  Mon Sep  8 18:04:14 EST 1997
 	- changed "quotemeta" to "quotemeta $_" in Text::Balanced
 	  to workaround bug in Perl 5.002 and 5.003
+
+1.10  Tue Sep 30 14:51:49 EST 1997
+	- fixed fatal bug in tracing code
+	- added m<delim>...<delim> format for regex tokens
+	- added support for trailing modifiers (/.../gimsox) in regex tokens
+	- added $thisline variable

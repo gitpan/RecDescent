@@ -16,7 +16,7 @@ q{
 		 |	<resync>
 
 	statement:	namelist are <commit> 'next' 'to' namelist
-				{ ::nextto $item[1], $item[6]; 1 }
+				{ ::nextto $item[1], $item[6], $thisline; 1 }
 		 |	<error?> <reject>
 
 	who_question
@@ -52,22 +52,23 @@ while (<>)
 	print "> ";
 }
 
-sub nextto($$)
+sub nextto($$$)
 {
 	foreach $A ( @{$_[0]} ) {
 	    foreach $B ( @{$_[1]} ) {
-		nexttoAB($A,$B);
+		nexttoAB($A,$B,$_[2]);
 	    }
 	}
 	print "okay\n";
 }
 
-sub nexttoAB($$)
+sub nexttoAB($$$)
 {
 	$nextto{$_[0]} or $nextto{$_[0]} = [];
 	$nextto{$_[1]} or $nextto{$_[1]} = [];
 	push @{$nextto{$_[0]}}, $_[1];
 	push @{$nextto{$_[1]}}, $_[0];
+	print "Learnt something from line $_[2]\n";
 }
 
 sub whonextto($)
