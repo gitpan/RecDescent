@@ -29,14 +29,14 @@ type student has
 end type
 ";
 
-print "> ", $parse->typedef($str) || "<failed>", "\n";
+print "> ", $parse->typedef($str) || "<failed (as expected)>", "\n";
 
 
 $str = " type student has end type ";
 
-print "> ", $parse->typedef($str) || "<failed>", "\n";
+print "> ", $parse->typedef($str) || "<failed (as expected)>", "\n";
 
 
 $str = " type studentRec is student ";
 
-print "> ", $parse->typedef($str) || "<failed>", "\n";
+print "> ", $parse->typedef($str) || "<failed (unexpectedly!)>", "\n";

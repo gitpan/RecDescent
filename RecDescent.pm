@@ -159,7 +159,9 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	$ERRORS = 0;
 	my $_linenum = $_[2] ? $_[2] : Parse::RecDescent::_linecount($_[1]);
 	my $thisrule = $thisparser->{"rules"}{"' . $self->{"name"} . '"};
-	Parse::RecDescent::_trace(qq{Trying rule: ' . $self->{"name"} . ' at "$_[1]"});
+	Parse::RecDescent::_trace(q{Trying rule: ' . $self->{"name"} . ' at "}
+				  .  Parse::RecDescent::_tracemax($_[1])
+				  . q{"});
 	my $_tok;
 	my $return = undef;
 	my $_matched=0;
@@ -185,13 +187,16 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 
 	$code .=
 '
-	$_[1] = $text;
         unless ( $_matched || $return )
 	{
-		Parse::RecDescent::_trace(qq{Didn\'t match rule: '. $self->{"name"} .'});
+		$_[1] = $text;	# NOT SURE THIS IS NEEDED
+		Parse::RecDescent::_trace(q{Didn\'t match rule: '. $self->{"name"} .'});
 		return undef;
 	}
-	Parse::RecDescent::_trace(qq{Matched rule: '. $self->{"name"} .'});
+	Parse::RecDescent::_trace(q{Matched rule '. $self->{"name"} .' with "}
+				  . Parse::RecDescent::_tracemax(substr($_[1],0,-length($text)))
+				  . q{"});
+	$_[1] = $text;
 	return defined($return)?$return:$item[$#item];
 }
 ';
@@ -223,7 +228,9 @@ sub isleftrec($$)
 package Parse::RecDescent::Production;
 
 sub describe ($)
-{ return quotemeta join ' ', map { $_->describe or () } @{$_[0]->{items}}; }
+{
+	return join ' ', map { $_->describe or () } @{$_[0]->{items}};
+}
 
 sub new ($$;$$)
 {
@@ -280,7 +287,10 @@ sub code($$$)
 	. (defined $self->{"uncommit"} ? '' : ' && !$commit')
 	. ')
 	{
-		Parse::RecDescent::_trace(qq{Trying production: [' . $self->describe . '] at "$_[1]"});
+		Parse::RecDescent::_trace(q{Trying production: ['
+					  . $self->describe . '] at "}
+					  . Parse::RecDescent::_tracemax($_[1])
+					  . q{"});
 		my $thisprod = $thisrule->{"prods"}[' . $self->{"number"} . '];
 		' . (defined $self->{"error"} ? '' : '$text = $_[1];' ) . '
 		my $_savetext;
@@ -330,11 +340,19 @@ sub code($$$)
 	my ($self, $namespace) = @_;
 	
 '
+		Parse::RecDescent::_trace(q{Trying action at "} .
+					  Parse::RecDescent::_tracemax($_[1]) .
+					  q{"});
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) .'
 
 		$_tok = ($_noactions) ? 0 : do ' . $self->{"code"} . ';
 		' . ($self->{"lookahead"}<0?'if':'unless') . ' (defined $_tok)
-		{ last; }
+		{
+			Parse::RecDescent::_trace(q{Didn\'t match action (it returned an undefined value)});
+			last;
+		}
+		Parse::RecDescent::_trace(q{Matched action. Return value was: }
+					  . $_tok);
 		push @item, $_tok;
 		' . ($self->{"lookahead"} ? '$text = $_savetext;' : '' ) .'
 '
@@ -480,7 +498,10 @@ sub code($$$)
 	$sdel =~ s/[[{(<]/{}/;
 	
 my $code = '
-		Parse::RecDescent::_trace(qq{Trying token: ' . $self->describe . ' at "$text"});
+		Parse::RecDescent::_trace(q{Trying token: ' . $self->describe
+					  . ' at "} 
+					  . Parse::RecDescent::_tracemax($text)
+					  . q{"});
 		$lastsep = "";
 		$_toksep =
 		    defined $tokensep		     ? $tokensep
@@ -501,7 +522,9 @@ my $code = '
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
-			Parse::RecDescent::_trace(qq{Failed on: [$text]});
+			Parse::RecDescent::_trace(q{Failed on: [}
+						  . Parse::RecDescent::_tracemax($text)
+						  . q{]});
 			Parse::RecDescent::_trace(qq{Lastsep:   [$lastsep]});
 
 			last;
@@ -539,7 +562,10 @@ sub code($$$)
 	my ($self, $namespace, $rule) = @_;
 	
 my $code = '
-		Parse::RecDescent::_trace(qq{Trying token: ' . $self->describe . ' at "$text"});
+		Parse::RecDescent::_trace(q{Trying token: ' . $self->describe
+					  . ' at "}
+					  . Parse::RecDescent::_tracemax($text)
+					  . q{"});
 		$lastsep = "";
 		$_toksep =
 		    defined $tokensep		     ? $tokensep
@@ -559,7 +585,8 @@ my $code = '
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
-			Parse::RecDescent::_trace(qq{Failed on: [$text]});
+			Parse::RecDescent::_trace(qq{Failed on: [}
+						  . Parse::RecDescent::_tracemax($text) . q{]});
 			Parse::RecDescent::_trace(qq{Lastsep:   [$lastsep]});
 			last;
 		}
@@ -602,7 +629,10 @@ sub code($$$)
 	my ($self, $namespace, $rule) = @_;
 	
 my $code = '
-		Parse::RecDescent::_trace(qq{Trying token: ' . $self->describe . ' at "$text"});
+		Parse::RecDescent::_trace(q{Trying token: ' . $self->describe
+					  . ' at "}
+					  . Parse::RecDescent::_tracemax($text)
+					  . q{"});
 		$lastsep = "";
 		$_toksep =
 		    defined $tokensep		     ? $tokensep
@@ -622,7 +652,9 @@ my $code = '
 		{
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
-			Parse::RecDescent::_trace(qq{Failed on: [$text]});
+			Parse::RecDescent::_trace(qq{Failed on: [}
+						  . Parse::RecDescent::_tracemax($text)
+						  . q{]});
 			Parse::RecDescent::_trace(qq{Lastsep:   [$lastsep]});
 			last;
 		}
@@ -805,7 +837,7 @@ package Parse::RecDescent;
 use Carp;
 use vars qw ( $AUTOLOAD $VERSION );
 
-$VERSION = 1.10;
+$VERSION = 1.20;
 
 # BUILDING A PARSER
 
@@ -823,6 +855,7 @@ sub new ($$)
 	{
 		"rules"     => {},
 		"namespace" => _nextnamespace(),
+		"startcode" => '',
 	};
 	bless $self, $class;
 	shift;
@@ -857,7 +890,7 @@ my $NEGLOOKAHEAD	= '\A(\s*\.\.\.!)';
 my $POSLOOKAHEAD	= '\A(\s*\.\.\.)';
 my $RULE		= '\A\s*(\w+)\s*:';
 my $PROD		= '\A\s*([|])';
-my $TOKEN		= q{\A\s*/((\\\\/|[^/])+)/\s*([simox]*)};
+my $TOKEN		= q{\A\s*/((\\\\/|[^/])+)/([gimsox]*)};
 my $MTOKEN		= q{\A\s*m[^\w\s]};
 my $LITERAL		= q{\A\s*'((\\\\'|[^'])+)'};
 my $INTERPLIT		= q{\A\s*"((\\\\"|[^"])+)"};
@@ -942,7 +975,7 @@ sub _generate($$$)
 			_parse("an action", $aftererror, $line, $code);
 			$item = new Parse::RecDescent::Action($code,$lookahead,$line);
 			$prod and $prod->additem($item)
-			      or  _no_rule("action",$line,"$code");
+			      or  $self->_addstartcode($code);
 		}
 		elsif ($grammar =~ m/$IMPLICITSUBRULE/
 			and do {($code,$grammar) = extract_codeblock($grammar,
@@ -1276,6 +1309,13 @@ sub _generate($$$)
 	return $ERRORS ? undef : $self;
 }
 
+sub _addstartcode($$)
+{
+	my ($self, $code) = @_;
+	$code =~ s/\A\s*\{(.*)\}\Z/$1/;
+
+	$self->{"startcode"} .= "$code;\n";
+}
 
 # CHECK FOR GRAMMAR PROBLEMS....
 
@@ -1348,7 +1388,8 @@ sub _check_grammar ($)
 sub _code($)
 {
 	my $self = shift;
-	my $code = '';
+	my $code = $self->{"startcode"};
+	$self->{"startcode"} = '';
 
 	my $rule;
 	foreach $rule ( values %{$self->{"rules"}} )
@@ -1454,6 +1495,21 @@ sub _hint($)
 	$errorprefix = "(Hint";
 	$errortext =~ s/\s+/ /g;
 	write ERROR;
+}
+
+sub _tracemax($)
+{
+	if (defined $::RD_TRACE
+	    && $::RD_TRACE =~ /\d+/
+	    && $::RD_TRACE>1
+	    && $::RD_TRACE<length($_[0]))
+	{
+		return substr($_[0],0,$::RD_TRACE) . "...";
+	}
+	else
+	{
+		return $_[0];
+	}
 }
 
 sub _trace($;$)

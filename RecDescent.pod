@@ -250,7 +250,7 @@ The value associated with any successfully matched token is a string
 containing the actual text which was matched by the token.
 
 
-=head2 Token separators
+=head2 Token Separators
 
 For the purpose of matching, each token in a production is considered
 to be preceded by a "token separator" - a pattern which must be
@@ -289,7 +289,7 @@ An action is a block of Perl code which is to be executed (as the
 block of a C<do> statement) when the parser reaches that point in a
 production. The action executes within a special namespace belonging to
 the active parser, so care must be taken in correctly qualifying variable
-names.
+names (see also L<Start-up Actions> below).
 
 The action is considered to succeed if the final value of the block
 is defined (that is, if the implied C<do> statement evaluates to a
@@ -394,10 +394,39 @@ C<$thisprod-E<gt>{tokensep}> for a single production.
 
 =back
 	
-B<Warning:> the parser relies on the information in the C<this...>
+B<Warning:> the parser relies on the information in the various C<this...>
 objects in some non-obvious ways. Tinkering with the other members of
 these objects will probably cause Bad Things to happen, unless you
 I<really> know what you're doing.
+
+
+=head2 Start-up Actions
+
+Any actions which appear I<before> the first rule definition in a
+grammar are treated as "start-up" actions. Each such action is
+stripped of its outermost blackets and than evaluated (in the parser's
+special namespace) just before the rules of the grammar are first
+compiled.
+
+The main use of start-up actions is to declare local variables within the
+parser's special namespace:
+
+		{ my $lastitem = '???'; }
+
+		list: item(s)	{ $return = $lastitem }
+
+		item: book	{ $lastitem = 'book'; }
+		      bell	{ $lastitem = 'bell'; }
+		      candle	{ $lastitem = 'candle'; }
+
+but start-up actions can be used to execute I<any> valid Perl code
+within a parser's special namespace.
+
+Start-up actions can appear within a grammar extension or replacement
+(that is, a partial grammar installed via Parse::RecDescent::Extend() or 
+Parse::RecDescent::Replace() - see L<Incremental Parsing>), and will be
+executed before the new grammar is installed. Note, however, that a 
+particular start-up action is only ever executed once.
 
 
 =head2 Look-ahead
@@ -736,11 +765,17 @@ whilst defining C<$::RD_HINT> causes the parser generator to offer
 more detailed analyses and hints on both errors and warnings.
 
 Defining C<$::RD_TRACE> causes the parser generator and the parser to
-report their progress to STDERR in excruciating detail. This is
-mainly useful for debugging a grammar that isn't behaving as you
-expected it to. To this end, if C<$::RD_TRACE> is defined when a
-parser is built, any actual parser code which is generated is also written
-to a file named "RD_TRACE" in the local directory.
+report their progress to STDERR in excruciating detail. This detail
+can be moderated in only one respect: if C<$::RD_TRACE> has an
+integer value (I<N>) greater than 1, only the first I<N> characters of
+the "current parsing context" (that is, where in the input string we
+are at any point in the parse) is reported at any time.
+
+C<$::RD_TRACE> is mainly useful for debugging a grammar that isn't
+behaving as you expected it to. To this end, if C<$::RD_TRACE> is
+defined when a parser is built, any actual parser code which is
+generated is also written to a file named "RD_TRACE" in the local
+directory.
 
 Note that the four variables belong to the "main" package, which
 makes them easier to refer to in the code controlling the parser, and
@@ -787,7 +822,7 @@ to extend or replace them:
 		parser->Replace("implicit_subrule_000001: 'generic Eastwood'");
 
 
-=head2 Incremental parsing
+=head2 Incremental Parsing
 
 C<Parse::RecDescent> provides two methods - C<Extend> and <Replace> - which
 can be used to alter the grammar matched by a parser. Both methods
@@ -844,7 +879,7 @@ a running parser, eliminating the need for semantic feedback by
 providing syntactic feedback instead.
 
 
-=head2 A metagrammar for C<Parse::RecDescent>
+=head2 A Metagrammar for C<Parse::RecDescent>
 
 The following is a specification of grammar format accepted by
 C<Parse::RecDescent::new> (specified in the C<Parse::RecDescent> grammar format!):
@@ -963,8 +998,9 @@ effects simply accumulate).
 
 =item *
 
-Instances where greedy repetition behaviour will almost certainly cause
-the failure of a production (a warning only - see L<"On-going Issues"> below).
+Instances where greedy repetition behaviour will almost certainly
+cause the failure of a production (a warning only - see
+L<"ON-GOING ISSUES AND FUTURE DIRECTIONS"> below).
 
 =head1 AUTHOR
 
