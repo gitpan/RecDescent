@@ -75,3 +75,25 @@ Revision history for Perl extension Parse::RecDescent.
 
 	- Text::Balanced::extract_.... altered to honour the context in
 	  which they are called (see Balanced.pod for details).
+
+
+1.24
+	- fixed minor problem in tracing code (context string now correctly
+	  reported for actions)
+
+	- added explicit namespace declaration at beginning of generated
+	  code, to ensure that any "start code" is declared in the
+	  appropriate namespace.
+
+	- fixed left recursion check on empty productions
+
+	- added $::RD_AUTOSTUB flag and associated autostubbing behaviour
+	  (see new section - "Autostubbing" - in RecDescent.pod)
+
+	- eliminated hierarchical precedence between $::RD_HINT and 
+          $::RD_TRACE. Enabling tracing now does _not_ automatically
+          turn on hinting (although error and warning messages are
+          still automatically enabled).
+
+	- fixed bug in Text::Balanced. Division now correctly handled
+	  in code blocks.

@@ -260,15 +260,15 @@ sub new ($$;$$)
 
 sub expected ($)
 {
-	return (defined $_[0]->{"items"}[0])
-		? return $_[0]->{"items"}[0]->describe()
-		: '';
+	my $itemcount = scalar @{$_[0]->{"items"}};
+	return ($itemcount) ? $_[0]->{"items"}[0]->describe() : '';
 }
 
 sub hasleftmost ($$)
 {
 	my ($self, $ref) = @_;
-	return ${$self->{"items"}}[0] eq $ref;
+	return ${$self->{"items"}}[0] eq $ref  if scalar @{$self->{"items"}};
+	return 0;
 }
 
 sub leftmostsubrule($)
@@ -354,7 +354,7 @@ sub code($$$)
 	
 '
 		Parse::RecDescent::_trace(q{Trying action at "} .
-					  Parse::RecDescent::_tracefirst($_[1]) .
+					  Parse::RecDescent::_tracefirst($text) .
 					  q{"});
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) .'
 
@@ -854,7 +854,7 @@ package Parse::RecDescent;
 use Carp;
 use vars qw ( $AUTOLOAD $VERSION );
 
-$VERSION = 1.23;
+$VERSION = 1.24;
 
 # BUILDING A PARSER
 
@@ -939,12 +939,9 @@ my $lines = 0;
 
 my $ERRORS = 0;
 
-sub _generate($$$)
+sub _generate($$$;$)
 {
-	my ($self, $grammar, $replace) = @_;
-
-	my $isimplicit =
-		($grammar =~ /\A_alternation_\d+_of_production_\d+_of_rule/);
+	my ($self, $grammar, $replace, $isimplicit) = (@_, 0);
 
 	my $aftererror = 0;
 	my $lookahead = 0;
@@ -999,7 +996,7 @@ sub _generate($$$)
 			_parse("an implicit subrule", $aftererror, $line,
 				"( $code )");
 			my $implicit = $rule->nextimplicit;
-			$self->_generate("$implicit : $code",0);
+			$self->_generate("$implicit : $code",0,1);
 			$grammar = $implicit . $grammar;
 		}
 		elsif ($grammar =~ s/$UNCOMMITPROD//)
@@ -1310,6 +1307,7 @@ sub _generate($$$)
 		my $code = $self->_code();
 		if (defined $::RD_TRACE)
 		{
+			print STDERR "printing code (", length($code),") to RD_TRACE\n";
 			open TRACE_FILE, ">RD_TRACE"
 			and print TRACE_FILE $code
 			and close TRACE_FILE;
@@ -1382,13 +1380,30 @@ sub _check_grammar ($)
 		{
 			if (!defined ${$rules}{$call})
 			{
-				_warn("Undefined (sub)rule \"$call\"
-				       used in a production.");
-				_hint("Will you be providing this rule later,
-				       or did you misspell \"$call\"? Otherwise
-				       it will be treated as an immediate
-				       <reject>.");
-				eval "sub $self->{namespace}::$call {undef}";
+				if (!defined $::RD_AUTOSTUB)
+				{
+					_warn("Undefined (sub)rule \"$call\"
+					       used in a production.");
+					_hint("Will you be providing this rule
+					       later, or did you perhaps
+					       misspell \"$call\"? Otherwise
+					       it will be treated as an 
+					       immediate <reject>.");
+					eval "sub $self->{namespace}::$call {undef}";
+				}
+				else	# EXPERIMENTAL
+				{
+					_warn("Autogenerating rule: $call");
+					_hint("A call was made to a subrule
+					       named \"$call\", but no such
+					       rule was specified. However,
+					       since \$::RD_AUTOSTUB
+					       was defined, a rule stub
+					       ($call : '$call') was
+					       automatically created.");
+
+					$self->_generate("$call : '$call'",0,1);
+				}
 			}
 		}
 
@@ -1411,7 +1426,7 @@ sub _check_grammar ($)
 sub _code($)
 {
 	my $self = shift;
-	my $code = $self->{"startcode"};
+	my $code = "package $self->{namespace};\n$self->{startcode}";
 	$self->{"startcode"} = '';
 
 	my $rule;
@@ -1513,7 +1528,7 @@ sub _warn($;$)
 
 sub _hint($)
 {
-	return unless _verbosity("HINT");
+	return unless defined $::RD_HINT;
 	$errortext = "$_[0])";
 	$errorprefix = "(Hint";
 	$errortext =~ s/\s+/ /g;

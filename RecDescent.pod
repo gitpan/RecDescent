@@ -2,6 +2,9 @@
 
 Parse::RecDescent - Generate Recursive-Descent Parsers
 
+=head1 VERSION
+
+This document refers to RecDescent version 1.24.
 
 =head1 SYNOPSIS
 
@@ -52,6 +55,7 @@ Parse::RecDescent - Generate Recursive-Descent Parsers
 	$::RD_WARNINGS	   # if defined, also report non-fatal problems
 	$::RD_HINTS	   # if defined, also suggestion remedies
 	$::RD_TRACE	   # if defined, also trace parsers' behaviour
+	$::RD_AUTOSTUB	   # if defined, generates "stubs" for undefined rules
 
 
 =head1 DESCRIPTION
@@ -173,8 +177,9 @@ of items and their success values.
 
 A subrule which appears in a production is an instruction to the parser to
 attempt to match the named rule at that point in the text being
-parsed. If the named subrule is not defined at that point the
-production containing it immediately fails.
+parsed. If the named subrule is not defined when requested the
+production containing it immediately fails (unless it was "autostubbed" - see
+L<Autostubbing>).
 
 A rule may (recursively) call itself as a subrule, but I<not> as the
 left-most item in any of its productions (since such recursions are usually
@@ -206,6 +211,55 @@ individual subrule matches. In other words in the rule:
 the value associated with the repeated subrule "statement(s)" is a reference
 to an array containing the values matched by each call to the individual
 subrule "statement".
+
+
+=head2 Autostubbing
+
+Normally, if a subrule appears in some production, but no rule of that
+name is ever defined in the grammar, the production which refers to the
+non-existent subrule fails immediately. This typically occurs as a
+result of mispellings, and is a sufficiently common occurance that a
+warning is generated for such situations.
+
+However, when prototyping a grammar it is sometimes useful to use
+subrules before a proper specification of them is possible. For
+example, a grammar might include a section like:
+
+		function_call: identifier '(' arg(s?) ')'
+
+		identifier: /[a-z]\w*/i
+
+where the possible format of an argument is sufficiently complex that
+it is not worth specifying in full until the general function call
+syntax has been debugged. In this situation it is convenient to leave
+the real rule C<arg> undefined and just slip in a placeholder (or
+"stub"):
+
+		arg: 'arg'
+
+so that the function call syntax can be tested with dummy input such as:
+
+		f0()
+		f1(arg)
+		f2(arg arg)
+		f3(arg arg arg)
+
+et cetera.
+
+Early in prototyping many such "stubs" may be required, so 
+C<Parse::RecDescent> provides a means of automating their definition.
+If the variable C<$::RD_AUTOSTUB> is defined when a parser is built,
+a subrule reference to any non-existent rule (say, C<sr>),
+causes a "stub" rule of the form:
+
+		sr: 'sr'
+
+to be automatically defined in the generated parser.
+A warning is issued for each such "autostubbed" rule.
+
+Hence, with C<$::AUTOSTUB> defined, it is possible to only partially
+specify a grammar, and then "fake" matches of the unspecified
+(sub)rules by just typing in their name.
 
 
 =head2 Tokens
@@ -444,8 +498,8 @@ but start-up actions can be used to execute I<any> valid Perl code
 within a parser's special namespace.
 
 Start-up actions can appear within a grammar extension or replacement
-(that is, a partial grammar installed via Parse::RecDescent::Extend() or 
-Parse::RecDescent::Replace() - see L<Incremental Parsing>), and will be
+(that is, a partial grammar installed via C<Parse::RecDescent::Extend()> or 
+C<Parse::RecDescent::Replace()> - see L<Incremental Parsing>), and will be
 executed before the new grammar is installed. Note, however, that a 
 particular start-up action is only ever executed once.
 
@@ -461,7 +515,7 @@ C</(?=...)/> look-ahead construct in Perl patterns. Thus, the rule:
 		inner_word: word ...word
 
 will match whatever the subrule "word" matches, provided that match is followed
-by some more text which would subrule "word" would also match (although this
+by some more text which subrule "word" would also match (although this
 second substring is not actually consumed by "inner_word")
 
 Likewise, a "...!" prefix, causes the following item to succeed (without
@@ -726,9 +780,10 @@ since in that case the second production would commit after matching
 the leading name.
 
 Note that to allow this behaviour, all C<E<lt>errorE<gt>> directives which are
-the first item in a production uncommit the rule just long enough
-to allow their production to be attempted (that is, when their production
-fails, the commitment is reinstated so that subsequent productions are skipped).
+the first item in a production automatically uncommit the rule just
+long enough to allow their production to be attempted (that is, when
+their production fails, the commitment is reinstated so that
+subsequent productions are skipped).
 
 In order to I<permanently> uncommit the rule before an error message,
 it is necessary to put an explicit C<E<lt>uncommitE<gt>> before the
@@ -774,8 +829,8 @@ semantics, it is necessary to use:
 
 
 The level of reporting during both parser construction and parsing is
-controlled by the presence or absence of five global variables:
-C<$::RD_ERRORS>, C<$::RD_WARNINGS>, C<$::RD_HINTS>, and
+controlled by the presence or absence of four global variables:
+C<$::RD_ERROR>, C<$::RD_WARN>, C<$::RD_HINT>, and
 <$::RD_TRACE>. If C<$::RD_ERRORS> is defined (and by default, it is)
 then fatal errors are reported.
 
@@ -786,9 +841,10 @@ whilst defining C<$::RD_HINT> causes the parser generator to offer
 more detailed analyses and hints on both errors and warnings.
 
 Defining C<$::RD_TRACE> causes the parser generator and the parser to
-report their progress to STDERR in excruciating detail. This detail
+report their progress to STDERR in excruciating detail (although, without hints
+unless $::RD_HINT is separately defined). This detail
 can be moderated in only one respect: if C<$::RD_TRACE> has an
-integer value (I<N>) greater than 1, only the first I<N> characters of
+integer value (I<N>) greater than 1, only the I<N> characters of
 the "current parsing context" (that is, where in the input string we
 are at any point in the parse) is reported at any time.
 
@@ -858,7 +914,7 @@ repetition specifiers:
 
 =head2 Incremental Parsing
 
-C<Parse::RecDescent> provides two methods - C<Extend> and <Replace> - which
+C<Parse::RecDescent> provides two methods - C<Extend> and C<Replace> - which
 can be used to alter the grammar matched by a parser. Both methods
 take the same argument as C<Parse::RecDescent::new>, namely a
 grammar specification string
@@ -880,9 +936,7 @@ Hence after:
 		$add = "name: 'Jimmy-Bob' | 'Bobby-Jim'\ndesc: colour /necks?/";
 		parser->Replace($add);
 
-are are only I<only> valid "name"s  and one possible description.
-adds two productions to the rule "name" (creating it if necessary) and one
-production to the rule "desc".
+are are only I<only> valid "name"s and the one possible description.
 
 A more interesting use of the C<Extend> and C<Replace> methods is to call them
 inside the action of an executing parser. For example:
