@@ -453,9 +453,8 @@ sub describe ($)
 	my $ldel = $_[0]->{ldelim};
 	my $rdel = $_[0]->{rdelim};
 	my $mod  = $_[0]->{mod};
-	$pat=~s/\\/\\\\/g;
-	if ($pat=~s/\$$//) { return "m$ldel".eval("qq{$pat}").'\$'."$rdel$mod" }
-	else               { return "m$ldel".eval("qq{$pat}")."$rdel$mod" }
+	if ($pat=~s/\$$//) { return "m$ldel".quotemeta($pat).'\$'."$rdel$mod" }
+	else               { return "m$ldel".quotemeta($pat)."$rdel$mod" }
 }
 
 # ARGS ARE: $self, $pattern, $left_delim, $modifiers, $lookahead, $linenum
@@ -841,7 +840,7 @@ $VERSION = 1.21;
 
 # BUILDING A PARSER
 
-my $nextnamespace = "namespace_000001";
+my $nextnamespace = "namespace000001";
 
 sub _nextnamespace()
 {
@@ -920,7 +919,7 @@ my $UNCOMMITPROD	= $PROD.'\s*(?=<uncommit)';
 my $ERRORPROD		= $PROD.'\s*(?=<error)';
 my $OTHER		= '\A\s*([^\s]+)';
 
-my $_implicit = "implicit_subrule_0000001";
+my $_implicit = "implicitSubrule0000001";
 
 my $lines = 0;
 
@@ -930,7 +929,7 @@ sub _generate($$$)
 {
 	my ($self, $grammar, $replace) = @_;
 
-	my $isimplicit = ($grammar =~ /^implicit_subrule/);
+	my $isimplicit = ($grammar =~ /^implicitSubrule/);
 
 	my $aftererror = 0;
 	my $lookahead = 0;
@@ -985,6 +984,7 @@ sub _generate($$$)
 			_parse("an implicit subrule", $aftererror, $line,
 				"( $code )");
 			my $implicit = $_implicit++;
+			print "<<<<$implicit>>>>\n";
 			$self->_generate("$implicit : $code",0);
 			$item = new Parse::RecDescent::Subrule($implicit,$lookahead,$line,$self->{"rules"}{$implicit}->expected);
 			$prod and $prod->additem($item)

@@ -47,3 +47,12 @@ Revision history for Perl extension Parse::RecDescent.
 	  matches now report first N/2 and last N/2 chars, instead of first N)
 
 	- fixed incorrect version number in Balanced.pm
+
+
+1.22  Tue Oct  7 11:53:27 EST 1997
+
+	- fixed lurking trace problem with certain pathological regexes
+
+	- fixed bug in generation of special namespaces (this was serious
+	  as it prevented the use of more than one alternation in a parser,
+	  as well as preventing the use of more than one parser in a script!
