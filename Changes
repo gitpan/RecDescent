@@ -1,27 +1,49 @@
 Revision history for Perl extension Parse::RecDescent.
 
 1.00  Mon Aug 11 13:17:13 1997
+
 	- original version
 
+
 1.01  Mon Sep  8 18:04:14 EST 1997
+
 	- changed "quotemeta" to "quotemeta $_" in Text::Balanced
 	  to workaround bug in Perl 5.002 and 5.003
 
+
 1.10  Tue Sep 30 14:51:49 EST 1997
+
 	- fixed fatal bug in tracing code
+
 	- added m<delim>...<delim> format for regex tokens
+
 	- added support for trailing modifiers (/.../gimsox) in regex tokens
+
 	- added $thisline variable
 
+
 1.20  Thu Oct  2 11:46:57 EST 1997
+
 	- fixed handling of trailing regex modifiers (now no whitespace allowed
 	  before between last delimiter and first modifier)
+
 	- added trace diagnostic for failure/success of actions
 	  (demystifies failures caused by an action returning undef)
+
 	- added context for "Matched rule..." trace
+
         - added a test so that an integer value (N>1) in the
           $::RD_TRACE variable now truncates (to N characters) all
           contexts reported in any trace
+
 	- added "start-up" actions: actions appearing before the first rule
           were previously an error. They are now executed (once) at
           the start of the parser's namespace.
+
+
+1.21  Sat Oct  4 17:12:23 EST 1997
+
+	- modified truncation of context in trace diagnostics (successful
+	  matches now report first N/2 and last N/2 chars, instead of first N)
+
+	- fixed incorrect version number in Balanced.pm

@@ -160,7 +160,7 @@ sub ' . $namespace . '::' . $self->{"name"} .  '
 	my $_linenum = $_[2] ? $_[2] : Parse::RecDescent::_linecount($_[1]);
 	my $thisrule = $thisparser->{"rules"}{"' . $self->{"name"} . '"};
 	Parse::RecDescent::_trace(q{Trying rule: ' . $self->{"name"} . ' at "}
-				  .  Parse::RecDescent::_tracemax($_[1])
+				  .  Parse::RecDescent::_tracefirst($_[1])
 				  . q{"});
 	my $_tok;
 	my $return = undef;
@@ -289,7 +289,7 @@ sub code($$$)
 	{
 		Parse::RecDescent::_trace(q{Trying production: ['
 					  . $self->describe . '] at "}
-					  . Parse::RecDescent::_tracemax($_[1])
+					  . Parse::RecDescent::_tracefirst($_[1])
 					  . q{"});
 		my $thisprod = $thisrule->{"prods"}[' . $self->{"number"} . '];
 		' . (defined $self->{"error"} ? '' : '$text = $_[1];' ) . '
@@ -341,7 +341,7 @@ sub code($$$)
 	
 '
 		Parse::RecDescent::_trace(q{Trying action at "} .
-					  Parse::RecDescent::_tracemax($_[1]) .
+					  Parse::RecDescent::_tracefirst($_[1]) .
 					  q{"});
 		' . ($self->{"lookahead"} ? '$_savetext = $text;' : '' ) .'
 
@@ -500,7 +500,7 @@ sub code($$$)
 my $code = '
 		Parse::RecDescent::_trace(q{Trying token: ' . $self->describe
 					  . ' at "} 
-					  . Parse::RecDescent::_tracemax($text)
+					  . Parse::RecDescent::_tracefirst($text)
 					  . q{"});
 		$lastsep = "";
 		$_toksep =
@@ -523,7 +523,7 @@ my $code = '
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
 			Parse::RecDescent::_trace(q{Failed on: [}
-						  . Parse::RecDescent::_tracemax($text)
+						  . Parse::RecDescent::_tracefirst($text)
 						  . q{]});
 			Parse::RecDescent::_trace(qq{Lastsep:   [$lastsep]});
 
@@ -564,7 +564,7 @@ sub code($$$)
 my $code = '
 		Parse::RecDescent::_trace(q{Trying token: ' . $self->describe
 					  . ' at "}
-					  . Parse::RecDescent::_tracemax($text)
+					  . Parse::RecDescent::_tracefirst($text)
 					  . q{"});
 		$lastsep = "";
 		$_toksep =
@@ -586,7 +586,7 @@ my $code = '
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
 			Parse::RecDescent::_trace(qq{Failed on: [}
-						  . Parse::RecDescent::_tracemax($text) . q{]});
+						  . Parse::RecDescent::_tracefirst($text) . q{]});
 			Parse::RecDescent::_trace(qq{Lastsep:   [$lastsep]});
 			last;
 		}
@@ -631,7 +631,7 @@ sub code($$$)
 my $code = '
 		Parse::RecDescent::_trace(q{Trying token: ' . $self->describe
 					  . ' at "}
-					  . Parse::RecDescent::_tracemax($text)
+					  . Parse::RecDescent::_tracefirst($text)
 					  . q{"});
 		$lastsep = "";
 		$_toksep =
@@ -653,7 +653,7 @@ my $code = '
 			'.($self->{"lookahead"} ? '$text = $_savetext;' : '').'
 			$expectation->failed();
 			Parse::RecDescent::_trace(qq{Failed on: [}
-						  . Parse::RecDescent::_tracemax($text)
+						  . Parse::RecDescent::_tracefirst($text)
 						  . q{]});
 			Parse::RecDescent::_trace(qq{Lastsep:   [$lastsep]});
 			last;
@@ -837,7 +837,7 @@ package Parse::RecDescent;
 use Carp;
 use vars qw ( $AUTOLOAD $VERSION );
 
-$VERSION = 1.20;
+$VERSION = 1.21;
 
 # BUILDING A PARSER
 
@@ -1502,9 +1502,28 @@ sub _tracemax($)
 	if (defined $::RD_TRACE
 	    && $::RD_TRACE =~ /\d+/
 	    && $::RD_TRACE>1
-	    && $::RD_TRACE<length($_[0]))
+	    && $::RD_TRACE+10<length($_[0]))
 	{
-		return substr($_[0],0,$::RD_TRACE) . "...";
+		my $count = length($_[0]) - $::RD_TRACE;
+		return substr($_[0],0,$::RD_TRACE/2)
+			. "...<$count>..."
+			. substr($_[0],-$::RD_TRACE/2);
+	}
+	else
+	{
+		return $_[0];
+	}
+}
+
+sub _tracefirst($)
+{
+	if (defined $::RD_TRACE
+	    && $::RD_TRACE =~ /\d+/
+	    && $::RD_TRACE>1
+	    && $::RD_TRACE+10<length($_[0]))
+	{
+		my $count = length($_[0]) - $::RD_TRACE;
+		return substr($_[0],0,$::RD_TRACE) . "...<+$count>";
 	}
 	else
 	{
