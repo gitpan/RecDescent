@@ -8,7 +8,7 @@ package Text::Balanced;
 use Exporter;
 use vars qw { $VERSION @ISA %EXPORT_TAGS };
 
-$VERSION	= 1.23;
+$VERSION	= 1.25;
 @ISA		= qw ( Exporter );
 		     
 %EXPORT_TAGS	= ( ALL => [ qw(

@@ -97,3 +97,6 @@ Revision history for Perl extension Parse::RecDescent.
 
 	- fixed bug in Text::Balanced. Division now correctly handled
 	  in code blocks.
+
+1.25
+	- Resynchronized numbering schemes for RecDescent and Balanced.

@@ -553,7 +553,14 @@ my $code = '
 package Parse::RecDescent::Literal;
 
 sub issubrule { undef }
-sub describe ($) { "'$_[0]->{pattern}'" }
+sub describe ($)
+{
+	my $pat = $_[0]->{pattern};
+	$pat=~s/\\/\\\\/g;
+	$pat=~s/}/\\}/g;
+	$pat=~s/{/\\{/g;
+	return "'$pat'";
+}
 
 sub new ($$$$)
 {
@@ -618,7 +625,9 @@ sub describe ($)
 {
 	my $pat = $_[0]->{pattern};
 	$pat=~s/\\/\\\\/g;
-	return '"' . eval("qq{$pat}") . '"';
+	$pat=~s/}/\\}/g;
+	$pat=~s/{/\\{/g;
+	return '"'.$pat.'"';
 }
 
 sub new ($$$$)
@@ -854,7 +863,7 @@ package Parse::RecDescent;
 use Carp;
 use vars qw ( $AUTOLOAD $VERSION );
 
-$VERSION = 1.24;
+$VERSION = 1.25;
 
 # BUILDING A PARSER
 
